@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>AI Resume Builder</title>
+
+    <link rel="stylesheet"
+          href="css/upload.css">
+
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="upload-card">
+
+        <h1>AI Resume Builder</h1>
+
+        <p>Record or Upload Interview Video</p>
+
+        <input type="text"
+               id="name"
+               placeholder="Enter Name">
+
+        <input type="email"
+               id="email"
+               placeholder="Enter Email">
+
+        <!-- CAMERA -->
+        <video id="cameraPreview"
+               autoplay
+               muted>
+        </video>
+
+        <!-- RECORD BUTTONS -->
+        <div class="record-buttons">
+
+            <button id="startRecord">
+                Start Recording
+            </button>
+
+            <button id="stopRecord">
+                Stop Recording
+            </button>
+
+        </div>
+
+        <!-- UPLOAD -->
+        <div class="drop-zone">
+
+            <p>Upload Existing Video</p>
+
+            <input type="file"
+                   id="videoInput"
+                   accept="video/*"
+                   hidden>
+
+            <button id="browseBtn">
+                Browse Video
+            </button>
+
+        </div>
+
+        <!-- PREVIEW -->
+        <video id="previewVideo"
+               controls>
+        </video>
+
+        <!-- UPLOAD BUTTON -->
+        <button id="uploadBtn"
+                class="upload-btn">
+
+            Upload Video
+
+        </button>
+
+    </div>
+
+</div>
+
+<script src="js/upload.js"></script>
+
+</body>
+</html>

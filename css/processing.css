@@ -1,0 +1,33 @@
+body{
+    background:#020617;
+    color:white;
+    font-family:Arial;
+}
+
+.process-container{
+    height:100vh;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    flex-direction:column;
+}
+
+.progress-bar{
+    width:500px;
+    height:30px;
+    background:#334155;
+    border-radius:20px;
+    overflow:hidden;
+    margin-top:20px;
+}
+
+.progress{
+    width:0%;
+    height:100%;
+    background:#22c55e;
+    transition:1s;
+}
+
+p{
+    margin-top:20px;
+}

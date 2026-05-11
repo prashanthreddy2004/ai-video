@@ -1,0 +1,83 @@
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+body{
+    background:#0f172a;
+    font-family:Arial;
+    color:white;
+}
+
+.container{
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    padding:20px;
+}
+
+.upload-card{
+    width:550px;
+    background:#1e293b;
+    padding:30px;
+    border-radius:20px;
+}
+
+h1{
+    text-align:center;
+    margin-bottom:10px;
+}
+
+p{
+    text-align:center;
+    margin-bottom:20px;
+}
+
+input{
+    width:100%;
+    padding:12px;
+    border:none;
+    border-radius:10px;
+    margin-bottom:20px;
+}
+
+#cameraPreview,
+#previewVideo{
+    width:100%;
+    height:300px;
+    object-fit:cover;
+    border-radius:15px;
+    background:black;
+    margin-bottom:20px;
+}
+
+.record-buttons{
+    display:flex;
+    gap:10px;
+    margin-bottom:20px;
+}
+
+button{
+    flex:1;
+    padding:12px;
+    border:none;
+    border-radius:10px;
+    background:#38bdf8;
+    color:white;
+    cursor:pointer;
+    font-size:16px;
+}
+
+button:hover{
+    opacity:0.9;
+}
+
+.drop-zone{
+    border:2px dashed #38bdf8;
+    padding:30px;
+    text-align:center;
+    border-radius:15px;
+    margin-bottom:20px;
+}
