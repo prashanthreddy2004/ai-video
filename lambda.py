@@ -10,6 +10,7 @@ import uuid
 # =========================================================
 # AWS CLIENTS
 # =========================================================
+
 s3 = boto3.client("s3")
 
 transcribe = boto3.client(
@@ -27,9 +28,15 @@ mediaconvert = boto3.client(
     region_name="us-east-1"
 )
 
+rekognition = boto3.client(
+    "rekognition",
+    region_name="us-east-1"
+)
+
 # =========================================================
 # CONFIG
 # =========================================================
+
 BUCKET_NAME = "video-resume-uploads"
 
 NOVA_MODEL_ID = "amazon.nova-lite-v1:0"
@@ -37,6 +44,7 @@ NOVA_MODEL_ID = "amazon.nova-lite-v1:0"
 # =========================================================
 # CORS
 # =========================================================
+
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "*",
@@ -46,6 +54,7 @@ CORS_HEADERS = {
 # =========================================================
 # GENERATE PRESIGNED URL
 # =========================================================
+
 def generate_upload_url():
 
     try:
@@ -88,6 +97,7 @@ def generate_upload_url():
 # =========================================================
 # GET RESULT
 # =========================================================
+
 def get_result(event):
 
     try:
@@ -142,6 +152,7 @@ def get_result(event):
 # =========================================================
 # CREATE HTML RESUME
 # =========================================================
+
 def create_html_resume(resume_text, output_path):
 
     safe_resume = resume_text.replace("\n", "<br>")
@@ -149,6 +160,7 @@ def create_html_resume(resume_text, output_path):
     html_content = f"""
     <html>
     <head>
+
         <title>AI Resume</title>
 
         <style>
@@ -163,6 +175,16 @@ def create_html_resume(resume_text, output_path):
                 background: white;
                 padding: 30px;
                 border-radius: 10px;
+                box-shadow: 0px 0px 10px rgba(0,0,0,0.1);
+            }}
+
+            h1 {{
+                color: #2c3e50;
+            }}
+
+            p {{
+                line-height: 1.8;
+                color: #333;
             }}
 
         </style>
@@ -190,6 +212,7 @@ def create_html_resume(resume_text, output_path):
 # =========================================================
 # CREATE BULLET HTML
 # =========================================================
+
 def create_bullet_html(bullet_points, output_path):
 
     bullets = ""
@@ -206,7 +229,7 @@ def create_bullet_html(bullet_points, output_path):
 
     <head>
 
-        <title>Highlights</title>
+        <title>Resume Highlights</title>
 
         <style>
 
@@ -220,6 +243,7 @@ def create_bullet_html(bullet_points, output_path):
             h1 {{
                 color: cyan;
                 text-align: center;
+                margin-bottom: 50px;
             }}
 
             li {{
@@ -248,11 +272,155 @@ def create_bullet_html(bullet_points, output_path):
         file.write(html_content)
 
 # =========================================================
-# CREATE HIGHLIGHT VIDEO
+# REKOGNITION ANALYSIS
 # =========================================================
-def create_highlight_clip(bucket, input_key):
+
+def analyze_confidence(bucket, key):
 
     try:
+
+        print("Starting Rekognition")
+
+        response = rekognition.start_face_detection(
+            Video={
+                "S3Object": {
+                    "Bucket": bucket,
+                    "Name": key
+                }
+            },
+            FaceAttributes="ALL"
+        )
+
+        job_id = response["JobId"]
+
+        while True:
+
+            result = rekognition.get_face_detection(
+                JobId=job_id
+            )
+
+            status = result["JobStatus"]
+
+            print("Rekognition Status:", status)
+
+            if status == "SUCCEEDED":
+                break
+
+            if status == "FAILED":
+
+                return {
+                    "confidence_score": 50,
+                    "communication_score": 50,
+                    "emotion": "UNKNOWN"
+                }
+
+            time.sleep(10)
+
+        emotions = []
+
+        confidence_scores = []
+
+        for item in result["Faces"]:
+
+            face = item.get("Face", {})
+
+            confidence_scores.append(
+                face.get("Confidence", 0)
+            )
+
+            for emotion in face.get("Emotions", []):
+
+                if emotion["Type"] in [
+                    "HAPPY",
+                    "CALM",
+                    "SURPRISED"
+                ]:
+
+                    emotions.append(
+                        emotion["Confidence"]
+                    )
+
+        confidence_score = int(
+            sum(confidence_scores) / len(confidence_scores)
+        ) if confidence_scores else 50
+
+        communication_score = int(
+            sum(emotions) / len(emotions)
+        ) if emotions else 50
+
+        return {
+            "confidence_score": confidence_score,
+            "communication_score": communication_score,
+            "emotion": "POSITIVE"
+        }
+
+    except Exception as e:
+
+        print("Rekognition Error")
+        print(str(e))
+
+        traceback.print_exc()
+
+        return {
+            "confidence_score": 50,
+            "communication_score": 50,
+            "emotion": "UNKNOWN"
+        }
+
+# =========================================================
+# DYNAMIC HIGHLIGHT
+# =========================================================
+
+def detect_highlight_timestamps(transcript_text):
+
+    try:
+
+        important_words = [
+            "project",
+            "experience",
+            "skills",
+            "education",
+            "developer",
+            "engineer"
+        ]
+
+        score = 0
+
+        text = transcript_text.lower()
+
+        for word in important_words:
+
+            if word in text:
+                score += 1
+
+        if score >= 3:
+
+            return {
+                "start": "00:00:00:00",
+                "end": "00:00:45:00"
+            }
+
+        return {
+            "start": "00:00:00:00",
+            "end": "00:00:30:00"
+        }
+
+    except:
+
+        return {
+            "start": "00:00:00:00",
+            "end": "00:00:30:00"
+        }
+
+# =========================================================
+# CREATE HIGHLIGHT CLIP
+# =========================================================
+
+def create_highlight_clip(bucket, input_key, start_time, end_time):
+
+    try:
+
+        print("Starting MediaConvert")
 
         endpoints = mediaconvert.describe_endpoints()
 
@@ -270,11 +438,28 @@ def create_highlight_clip(bucket, input_key):
 
         output_destination = f"s3://{bucket}/clips/"
 
+        print("Highlight:", start_time, end_time)
+
         job_settings = {
 
             "Inputs": [
                 {
-                    "FileInput": f"s3://{bucket}/{input_key}"
+                    "FileInput": f"s3://{bucket}/{input_key}",
+
+                    "TimecodeSource": "ZEROBASED",
+
+                    "InputClippings": [
+                        {
+                            "StartTimecode": start_time,
+                            "EndTimecode": end_time
+                        }
+                    ],
+
+                    "AudioSelectors": {
+                        "Audio Selector 1": {
+                            "DefaultSelection": "DEFAULT"
+                        }
+                    }
                 }
             ],
 
@@ -299,24 +484,62 @@ def create_highlight_clip(bucket, input_key):
                             },
 
                             "VideoDescription": {
+
+                                "Width": 1280,
+                                "Height": 720,
+
                                 "CodecSettings": {
+
                                     "Codec": "H_264",
 
                                     "H264Settings": {
-                                        "RateControlMode": "QVBR"
+
+                                        "RateControlMode": "QVBR",
+
+                                        "MaxBitrate": 5000000,
+
+                                        "QvbrSettings": {
+                                            "QvbrQualityLevel": 7
+                                        },
+
+                                        "SceneChangeDetect": "TRANSITION_DETECTION",
+
+                                        "QualityTuningLevel": "SINGLE_PASS"
                                     }
                                 }
-                            }
+                            },
+
+                            "AudioDescriptions": [
+                                {
+                                    "CodecSettings": {
+
+                                        "Codec": "AAC",
+
+                                        "AacSettings": {
+
+                                            "Bitrate": 96000,
+
+                                            "CodingMode": "CODING_MODE_2_0",
+
+                                            "SampleRate": 48000
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     ]
                 }
             ]
         }
 
-        mc_client.create_job(
+        response = mc_client.create_job(
             Role=os.environ["MEDIACONVERT_ROLE"],
             Settings=job_settings
         )
+
+        print("MediaConvert Job Submitted")
+
+        print(response)
 
         clip_url = (
             f"https://{bucket}.s3.amazonaws.com/"
@@ -327,6 +550,9 @@ def create_highlight_clip(bucket, input_key):
 
     except Exception as e:
 
+        print("MediaConvert Error")
+        print(str(e))
+
         traceback.print_exc()
 
         return ""
@@ -334,9 +560,12 @@ def create_highlight_clip(bucket, input_key):
 # =========================================================
 # PROCESS VIDEO
 # =========================================================
+
 def process_uploaded_video(event):
 
     try:
+
+        print("S3 EVENT RECEIVED")
 
         bucket = event["Records"][0]["s3"]["bucket"]["name"]
 
@@ -346,9 +575,6 @@ def process_uploaded_video(event):
 
         print("Uploaded File:", key)
 
-        # =========================================================
-        # SKIP GENERATED FILES
-        # =========================================================
         if (
             key.startswith("clips/")
             or key.startswith("results/")
@@ -357,7 +583,7 @@ def process_uploaded_video(event):
 
             return {
                 "statusCode": 200,
-                "body": "Skipped Generated File"
+                "body": "Skipped"
             }
 
         if not key.lower().endswith(".mp4"):
@@ -376,8 +602,9 @@ def process_uploaded_video(event):
         print("Media URI:", media_uri)
 
         # =========================================================
-        # START TRANSCRIBE
+        # TRANSCRIBE
         # =========================================================
+
         job_name = f"job-{uuid.uuid4()}"
 
         transcribe.start_transcription_job(
@@ -391,10 +618,9 @@ def process_uploaded_video(event):
 
         print("Transcription Started")
 
-        # =========================================================
-        # WAIT
-        # =========================================================
-        while True:
+        attempts = 0
+
+        while attempts < 60:
 
             status = transcribe.get_transcription_job(
                 TranscriptionJobName=job_name
@@ -402,7 +628,7 @@ def process_uploaded_video(event):
 
             job_status = status["TranscriptionJob"]["TranscriptionJobStatus"]
 
-            print("Status:", job_status)
+            print("Current Status:", job_status)
 
             if job_status == "COMPLETED":
                 break
@@ -414,26 +640,53 @@ def process_uploaded_video(event):
                     "body": "Transcription Failed"
                 }
 
+            attempts += 1
+
             time.sleep(10)
 
-        # =========================================================
-        # TRANSCRIPT
-        # =========================================================
         transcript_url = status["TranscriptionJob"]["Transcript"]["TranscriptFileUri"]
 
         response = urllib.request.urlopen(transcript_url)
 
         transcript_json = json.loads(response.read())
 
-        transcript_text = transcript_json["results"]["transcripts"][0]["transcript"]
+        transcript_text = transcript_json[
+            "results"
+        ]["transcripts"][0]["transcript"]
 
         print("Transcript Extracted")
 
         # =========================================================
+        # REKOGNITION
+        # =========================================================
+
+        analysis = analyze_confidence(
+            bucket,
+            key
+        )
+
+        confidence_score = analysis["confidence_score"]
+
+        communication_score = analysis["communication_score"]
+
+        emotion = analysis["emotion"]
+
+        print("Confidence Analysis Done")
+
+        # =========================================================
         # RESUME GENERATION
         # =========================================================
-        prompt = f"""
-Create professional ATS-friendly resume.
+
+        resume_prompt = f"""
+Create a professional ATS-friendly resume.
+
+Include:
+1. Summary
+2. Skills
+3. Experience
+4. Education
+5. Projects
+6. Certifications
 
 Transcript:
 
@@ -445,9 +698,10 @@ Transcript:
             "messages": [
                 {
                     "role": "user",
+
                     "content": [
                         {
-                            "text": prompt
+                            "text": resume_prompt
                         }
                     ]
                 }
@@ -470,24 +724,82 @@ Transcript:
             nova_response["body"].read()
         )
 
-        resume_text = response_body["output"]["message"]["content"][0]["text"]
+        resume_text = response_body[
+            "output"
+        ]["message"]["content"][0]["text"]
 
         print("Resume Generated")
 
         # =========================================================
         # BULLET POINTS
         # =========================================================
-        bullet_points = """
-Professional resume generated
-AI analyzed video content
-Skills extracted successfully
-Resume highlights created
-Processing completed
+
+        bullet_prompt = f"""
+Convert resume into 5 short bullet points.
+
+Rules:
+- One line each
+- Max 10 words
+- No numbering
+
+Resume:
+
+{resume_text}
 """
 
+        bullet_request = {
+
+            "messages": [
+                {
+                    "role": "user",
+
+                    "content": [
+                        {
+                            "text": bullet_prompt
+                        }
+                    ]
+                }
+            ],
+
+            "inferenceConfig": {
+                "maxTokens": 200,
+                "temperature": 0.3
+            }
+        }
+
+        bullet_response = bedrock.invoke_model(
+            modelId=NOVA_MODEL_ID,
+            body=json.dumps(bullet_request),
+            contentType="application/json",
+            accept="application/json"
+        )
+
+        bullet_body = json.loads(
+            bullet_response["body"].read()
+        )
+
+        bullet_points = bullet_body[
+            "output"
+        ]["message"]["content"][0]["text"]
+
+        print("Bullet Points Generated")
+
         # =========================================================
-        # CREATE HTML
+        # HIGHLIGHT DETECTION
         # =========================================================
+
+        highlight = detect_highlight_timestamps(
+            transcript_text
+        )
+
+        start_time = highlight["start"]
+
+        end_time = highlight["end"]
+
+        # =========================================================
+        # CREATE HTML FILES
+        # =========================================================
+
         resume_html_path = "/tmp/resume.html"
 
         bullets_html_path = "/tmp/bullets.html"
@@ -505,48 +817,59 @@ Processing completed
         # =========================================================
         # UPLOAD HTML
         # =========================================================
+
         resume_key = f"resumes/{file_name}.html"
+
+        bullet_key = f"clips/{file_name}_bullets.html"
 
         s3.upload_file(
             resume_html_path,
             bucket,
             resume_key,
             ExtraArgs={
-                "ContentType": "text/html",
-                "ACL": "public-read"
+                "ContentType": "text/html"
             }
         )
-
-        bullet_key = f"clips/{file_name}_bullets.html"
 
         s3.upload_file(
             bullets_html_path,
             bucket,
             bullet_key,
             ExtraArgs={
-                "ContentType": "text/html",
-                "ACL": "public-read"
+                "ContentType": "text/html"
             }
         )
 
-        resume_url = f"https://{bucket}.s3.amazonaws.com/{resume_key}"
+        resume_url = (
+            f"https://{bucket}.s3.amazonaws.com/{resume_key}"
+        )
 
-        bullet_url = f"https://{bucket}.s3.amazonaws.com/{bullet_key}"
+        bullet_url = (
+            f"https://{bucket}.s3.amazonaws.com/{bullet_key}"
+        )
+
+        print("HTML Uploaded")
 
         # =========================================================
-        # CREATE CLIP
+        # CREATE VIDEO CLIP
         # =========================================================
+
         clip_url = create_highlight_clip(
             bucket,
-            key
+            key,
+            start_time,
+            end_time
         )
 
         # =========================================================
         # SAVE RESULT JSON
         # =========================================================
+
         result_data = {
 
             "status": "COMPLETED",
+
+            "uploaded_video": key,
 
             "resume_html": resume_url,
 
@@ -554,7 +877,13 @@ Processing completed
 
             "highlight_clip": clip_url,
 
-            "bullet_points": bullet_points
+            "bullet_points": bullet_points,
+
+            "confidence_score": confidence_score,
+
+            "communication_score": communication_score,
+
+            "emotion": emotion
         }
 
         result_path = "/tmp/result.json"
@@ -569,19 +898,34 @@ Processing completed
             bucket,
             result_key,
             ExtraArgs={
-                "ContentType": "application/json",
-                "ACL": "public-read"
+                "ContentType": "application/json"
             }
         )
 
         print("Result JSON Uploaded")
 
+        # =========================================================
+        # DELETE TRANSCRIBE JOB
+        # =========================================================
+
+        try:
+
+            transcribe.delete_transcription_job(
+                TranscriptionJobName=job_name
+            )
+
+        except:
+            pass
+
         return {
             "statusCode": 200,
-            "body": "Completed"
+            "body": "Processing Completed"
         }
 
     except Exception as e:
+
+        print("ERROR OCCURRED")
+        print(str(e))
 
         traceback.print_exc()
 
@@ -593,13 +937,17 @@ Processing completed
 # =========================================================
 # MAIN HANDLER
 # =========================================================
+
 def lambda_handler(event, context):
 
     print(json.dumps(event))
 
     try:
 
-        # OPTIONS
+        # =========================================================
+        # OPTIONS REQUEST
+        # =========================================================
+
         if event.get("requestContext") and \
            event.get("requestContext", {}).get("http", {}).get("method") == "OPTIONS":
 
@@ -611,7 +959,10 @@ def lambda_handler(event, context):
                 })
             }
 
-        # API GATEWAY
+        # =========================================================
+        # API GATEWAY REQUEST
+        # =========================================================
+
         if "requestContext" in event:
 
             path = event.get("rawPath", "")
@@ -636,10 +987,17 @@ def lambda_handler(event, context):
                     })
                 }
 
+        # =========================================================
         # S3 EVENT
+        # =========================================================
+
         elif "Records" in event:
 
             return process_uploaded_video(event)
+
+        # =========================================================
+        # UNKNOWN EVENT
+        # =========================================================
 
         else:
 
