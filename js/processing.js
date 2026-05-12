@@ -1,7 +1,7 @@
-const progress =
+let progress =
 document.getElementById("progress");
 
-const statusText =
+let statusText =
 document.getElementById("statusText");
 
 let value = 0;
@@ -18,7 +18,7 @@ const interval = setInterval(()=>{
         clearInterval(interval);
 
         statusText.innerHTML =
-        "Completed";
+        "Processing Completed";
 
         setTimeout(()=>{
 

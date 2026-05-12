@@ -1,12 +1,7 @@
-const API_URL =
+const API_BASE =
 "https://50rlwa0agc.execute-api.us-east-1.amazonaws.com/upload";
 
-const cameraPreview =
-document.getElementById("cameraPreview");
-
-const previewVideo =
-document.getElementById("previewVideo");
-
+// ELEMENTS
 const browseBtn =
 document.getElementById("browseBtn");
 
@@ -16,27 +11,61 @@ document.getElementById("videoInput");
 const uploadBtn =
 document.getElementById("uploadBtn");
 
+const previewVideo =
+document.getElementById("previewVideo");
+
+const cameraPreview =
+document.getElementById("cameraPreview");
+
 const startRecord =
 document.getElementById("startRecord");
 
 const stopRecord =
 document.getElementById("stopRecord");
 
-let mediaRecorder;
-let recordedChunks = [];
 let selectedFile = null;
 
-// -----------------------------
-// OPEN CAMERA
-// -----------------------------
-async function startCamera(){
+let mediaRecorder;
+
+let recordedChunks = [];
+
+// =====================================
+// OPEN FILE BROWSER
+// =====================================
+browseBtn.addEventListener("click", () => {
+
+    videoInput.click();
+
+});
+
+// =====================================
+// FILE SELECT
+// =====================================
+videoInput.addEventListener("change", (e) => {
+
+    selectedFile = e.target.files[0];
+
+    if(selectedFile){
+
+        previewVideo.src =
+        URL.createObjectURL(selectedFile);
+    }
+
+});
+
+// =====================================
+// START CAMERA
+// =====================================
+async function initCamera(){
 
     try{
 
         const stream =
         await navigator.mediaDevices.getUserMedia({
+
             video: true,
             audio: true
+
         });
 
         cameraPreview.srcObject = stream;
@@ -46,140 +75,130 @@ async function startCamera(){
 
         mediaRecorder.ondataavailable = (event)=>{
 
-            if(event.data.size > 0){
+            recordedChunks.push(event.data);
 
-                recordedChunks.push(event.data);
-            }
         };
 
         mediaRecorder.onstop = ()=>{
 
             const blob =
-            new Blob(recordedChunks,{
-                type:"video/webm"
+            new Blob(recordedChunks, {
+
+                type: "video/mp4"
+
             });
 
             selectedFile =
             new File(
                 [blob],
-                "recorded-video.webm",
-                {type:"video/webm"}
+                "recorded-video.mp4",
+                {
+                    type: "video/mp4"
+                }
             );
 
-            const videoURL =
-            URL.createObjectURL(blob);
-
             previewVideo.src =
-            videoURL;
+            URL.createObjectURL(selectedFile);
+
+            recordedChunks = [];
         };
 
     }catch(error){
 
         console.log(error);
 
-        alert("Camera access denied");
+        alert("Camera Access Denied");
     }
 }
 
-startCamera();
+initCamera();
 
-// -----------------------------
+// =====================================
 // START RECORDING
-// -----------------------------
-startRecord.addEventListener("click",()=>{
+// =====================================
+startRecord.addEventListener("click", ()=>{
 
-    recordedChunks = [];
+    if(mediaRecorder){
 
-    mediaRecorder.start();
+        mediaRecorder.start();
 
-    alert("Recording Started");
-});
-
-// -----------------------------
-// STOP RECORDING
-// -----------------------------
-stopRecord.addEventListener("click",()=>{
-
-    mediaRecorder.stop();
-
-    alert("Recording Stopped");
-});
-
-// -----------------------------
-// BROWSE VIDEO
-// -----------------------------
-browseBtn.addEventListener("click",()=>{
-
-    videoInput.click();
-});
-
-// -----------------------------
-// SELECT VIDEO
-// -----------------------------
-videoInput.addEventListener("change",(event)=>{
-
-    selectedFile =
-    event.target.files[0];
-
-    if(selectedFile){
-
-        previewVideo.src =
-        URL.createObjectURL(selectedFile);
+        alert("Recording Started");
     }
+
 });
 
-// -----------------------------
+// =====================================
+// STOP RECORDING
+// =====================================
+stopRecord.addEventListener("click", ()=>{
+
+    if(mediaRecorder){
+
+        mediaRecorder.stop();
+
+        alert("Recording Stopped");
+    }
+
+});
+
+// =====================================
 // UPLOAD VIDEO
-// -----------------------------
-uploadBtn.addEventListener("click",async()=>{
+// =====================================
+uploadBtn.addEventListener("click", async ()=>{
 
     try{
 
         if(!selectedFile){
 
-            alert("Please record or select video");
+            alert("Select Video First");
 
             return;
         }
 
-        const formData =
-        new FormData();
-
-        formData.append(
-            "video",
-            selectedFile
-        );
-
+        // GET PRESIGNED URL
         const response =
-        await fetch(API_URL,{
-            method:"POST",
-            body:formData
-        });
+        await fetch(`${API_BASE}/upload`);
 
         const data =
         await response.json();
 
-        console.log(data);
+        const uploadURL =
+        data.uploadURL;
 
-        if(data.videoKey){
+        const videoKey =
+        data.videoKey;
 
-            localStorage.setItem(
-                "videoKey",
-                data.videoKey
-            );
+        console.log(videoKey);
 
-            window.location.href =
-            "processing.html";
+        // UPLOAD TO S3
+        await fetch(uploadURL, {
 
-        }else{
+            method: "PUT",
 
-            alert("Upload Failed");
-        }
+            headers: {
+                "Content-Type": "video/mp4"
+            },
+
+            body: selectedFile
+        });
+
+        // SAVE VIDEO KEY
+        localStorage.setItem(
+            "videoKey",
+            videoKey
+        );
+
+        alert("Upload Successful");
+
+        // REDIRECT
+        window.location.href =
+        "processing.html";
 
     }catch(error){
 
         console.log(error);
 
-        alert("Upload Error");
+        alert("Upload Failed");
     }
+
 });

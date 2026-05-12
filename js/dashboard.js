@@ -1,38 +1,53 @@
-const API_BASE =
-"https://50rlwa0agc.execute-api.us-east-1.amazonaws.com";
+const API_URL =
+"https://50rlwa0agc.execute-api.us-east-1.amazonaws.com/result";
 
-const resultContainer =
-document.getElementById("resultContainer");
+const statusText =
+document.getElementById("statusText");
 
-// --------------------------------
-// GET VIDEO KEY
-// --------------------------------
-const videoKey =
-localStorage.getItem("videoKey");
+const communicationScore =
+document.getElementById("communicationScore");
 
-if(!videoKey){
+const confidenceScore =
+document.getElementById("confidenceScore");
 
-    resultContainer.innerHTML =
-    "<h2>No video key found</h2>";
+const technicalScore =
+document.getElementById("technicalScore");
 
-}else{
+const overallScore =
+document.getElementById("overallScore");
 
-    loadResults();
-}
+const analysisText =
+document.getElementById("analysisText");
 
-// --------------------------------
+const resumeLink =
+document.getElementById("resumeLink");
+
+const clipVideo =
+document.getElementById("clipVideo");
+
+// =====================================
 // LOAD RESULTS
-// --------------------------------
+// =====================================
 async function loadResults(){
 
     try{
 
-        resultContainer.innerHTML =
-        "<h2>Processing Interview...</h2>";
+        const videoKey =
+        localStorage.getItem("videoKey");
+
+        if(!videoKey){
+
+            statusText.innerHTML =
+            "No Video Found";
+
+            return;
+        }
 
         const response =
         await fetch(
-            `${API_BASE}/result?videoKey=${encodeURIComponent(videoKey)}`
+
+            `${API_URL}?videoKey=${encodeURIComponent(videoKey)}`
+
         );
 
         const data =
@@ -40,80 +55,53 @@ async function loadResults(){
 
         console.log(data);
 
-        // --------------------------
-        // STILL PROCESSING
-        // --------------------------
-        if(data.status !== "completed"){
+        // WAIT
+        if(data.status === "PROCESSING"){
 
-            resultContainer.innerHTML =
-            "<h2>Still Processing...</h2>";
+            statusText.innerHTML =
+            "AI Processing...";
 
             setTimeout(loadResults,5000);
 
             return;
         }
 
-        // --------------------------
+        // =====================================
         // SHOW RESULTS
-        // --------------------------
-        resultContainer.innerHTML = `
+        // =====================================
+        statusText.innerHTML =
+        "Analysis Completed";
 
-            <h1>Interview Analysis</h1>
+        communicationScore.innerHTML =
+        data.communication_score || 0;
 
-            <h2>Scores</h2>
+        confidenceScore.innerHTML =
+        data.confidence_score || 0;
 
-            <p>
-            Communication:
-            ${data.communication}/10
-            </p>
+        technicalScore.innerHTML =
+        data.technical_score || 0;
 
-            <p>
-            Confidence:
-            ${data.confidence}/10
-            </p>
+        overallScore.innerHTML =
+        data.overall_score || 0;
 
-            <p>
-            Technical:
-            ${data.technical}/10
-            </p>
+        analysisText.innerHTML =
+        data.analysis || "No Analysis";
 
-            <p>
-            Overall:
-            ${data.overall}/10
-            </p>
+        // RESUME
+        resumeLink.href =
+        data.resume_html;
 
-            <h2>AI Analysis</h2>
-
-            <p>
-            ${data.analysis}
-            </p>
-
-            <h2>Resume</h2>
-
-            <a href="${data.resume_url}"
-               target="_blank">
-
-               Open Resume
-
-            </a>
-
-            <h2>Highlight Clip</h2>
-
-            <video width="600"
-                   controls>
-
-                <source
-                    src="${data.clip_url}"
-                    type="video/mp4">
-
-            </video>
-        `;
+        // VIDEO
+        clipVideo.src =
+        data.highlight_clip;
 
     }catch(error){
 
         console.log(error);
 
-        resultContainer.innerHTML =
-        "<h2>Error Loading Results</h2>";
+        statusText.innerHTML =
+        "Failed To Load Results";
     }
 }
+
+loadResults();
